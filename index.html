@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Damage Detection</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Upload Car Image for Damage Detection</h1>
+    <input type="file" id="image-upload" accept="image/*">
+    <label for="image-upload">Choose Image</label>
+    <button id="upload-btn">Upload Image</button>
+    <div id="result">
+        <p id="damage-result"></p>
+        <img id="car-image" src="" alt="Uploaded Image">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <!-- Include Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <script>
+        // Function to load image as base64
+        const loadImageBase64 = (file) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (error) => reject(error);
+            });
+        };
+
+        // Class ID to label mapping (you can extend this if necessary)
+        const classMap = {
+            "0": "Car Damage"
+        };
+
+        // Event listener for the upload button
+        document.getElementById("upload-btn").addEventListener("click", async () => {
+            const fileInput = document.getElementById("image-upload");
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert("Please select an image first.");
+                return;
+            }
+
+            // Load the image as base64
+            try {
+                const imageBase64 = await loadImageBase64(file);
+
+                // Display the image on the screen
+                const imgElement = document.getElementById("car-image");
+                imgElement.src = imageBase64;
+
+                // Wait until the image is fully loaded to set canvas size
+                imgElement.onload = function () {
+                    // Set canvas size to match image size
+                    const canvas = document.getElementById("canvas");
+                    canvas.width = imgElement.width;
+                    canvas.height = imgElement.height;
+
+                    // Send the base64 image to the backend for car damage detection
+                    axios({
+                        method: "POST",
+                        url: "https://detect.roboflow.com/car-damage-detection-ectlo/3",
+                        params: {
+                            api_key: "EOnmXd7ojcOjpifUTNzX", // Replace with your API key
+                        },
+                        data: imageBase64,
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded"
+                        }
+                    })
+                    .then(function (response) {
+                        console.log("API Response:", response.data);
+                        document.getElementById("damage-result").textContent = response.data?.predictions?.length
+                            ? `Damage detected: ${response.data.predictions.length} areas`
+                            : "No damage detected";
+
+                        // Draw bounding boxes around detected damage
+                        const predictions = response.data?.predictions || [];
+                        drawBoundingBoxes(predictions, imgElement.width, imgElement.height);
+                    })
+                    .catch(function (error) {
+                        console.log("Error:", error.message);
+                        document.getElementById("damage-result").textContent = `Error: ${error.message}`;
+                    });
+                };
+
+            } catch (error) {
+                console.error("Error loading image:", error);
+                alert("Error loading image.");
+            }
+        });
+
+        // Function to draw bounding boxes around detected damage areas
+        function drawBoundingBoxes(predictions, imgWidth, imgHeight) {
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+
+            // Clear the canvas before drawing new boxes
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            predictions.forEach(prediction => {
+                const { x, y, width, height, class: classId } = prediction;
+                const label = classMap[classId] || "Unknown"; // Get human-readable label
+
+                // Scale the bounding box coordinates relative to the image size
+                const scaledX = (x / imgWidth) * canvas.width;
+                const scaledY = (y / imgHeight) * canvas.height;
+                const scaledWidth = (width / imgWidth) * canvas.width;
+                const scaledHeight = (height / imgHeight) * canvas.height;
+
+                // Set the drawing style for the bounding box
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 2;
+                ctx.fillStyle = "red";
+
+                // Draw the bounding box
+                ctx.beginPath();
+                ctx.rect(scaledX, scaledY, scaledWidth, scaledHeight);
+                ctx.stroke();
+
+                // Draw the label text
+                ctx.font = "16px Arial";
+                ctx.fillText(label, scaledX, scaledY > 10 ? scaledY - 5 : 10); // Display the label above the box
+            });
+        }
+    </script>
+</body>
+</html>
